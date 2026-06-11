@@ -1,0 +1,66 @@
+name: Deploy Web to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: photos-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore generated photo assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/web/src/data/photos-manifest.json
+            apps/web/public/thumbnails
+          key: afilmory-assets-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            afilmory-assets-${{ github.ref_name }}-
+
+      - name: Build manifest and thumbnails
+        run: pnpm build:manifest
+        env:
+          S3_REGION: ${{ secrets.S3_REGION || 'auto' }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME || 'photos' }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_PREFIX: ${{ secrets.S3_PREFIX }}
+          S3_CUSTOM_DOMAIN: ${{ secrets.S3_CUSTOM_DOMAIN || 'https://media.starryio.com' }}
+          S3_EXCLUDE_REGEX: ${{ secrets.S3_EXCLUDE_REGEX }}
+
+      - name: Build web
+        run: pnpm exec vite build
+        working-directory: ./apps/web
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm dlx wrangler pages deploy apps/web/dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch="${GITHUB_REF_NAME}"
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'photos' }}
