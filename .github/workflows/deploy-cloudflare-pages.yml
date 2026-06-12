@@ -58,6 +58,14 @@ jobs:
         run: pnpm exec vite build
         working-directory: ./apps/web
 
+      - name: Ensure Cloudflare Pages project exists
+        run: |
+          pnpm dlx wrangler pages project create "${CLOUDFLARE_PAGES_PROJECT}" --production-branch=main || true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'photos' }}
+
       - name: Deploy to Cloudflare Pages
         run: pnpm dlx wrangler pages deploy apps/web/dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch="${GITHUB_REF_NAME}"
         env:
